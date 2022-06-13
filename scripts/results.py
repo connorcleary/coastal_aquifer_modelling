@@ -171,14 +171,16 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
     mound_col = np.int((mound/pars.Lx+pars.offshore_proportion)*pars.ncol)
 
     # truncate to just include layers below the inland boundary
-    concentration_mound = concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,mound_col]
-    concentration_edge = concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,-1]
+    concentration_mound = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,mound_col])
+    concentration_edge = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,-1])
     y=np.linspace(-pars.sea_level, pars.h_b, int(pars.nlay*((pars.sea_level+pars.h_b)/pars.Lz)))
 
+    inland_lay = int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1
     # find isoclors at the mound column
-    lay_isoclor1 = np.atleast_1d(np.argmax(concentration_mound>0.35))[0]
-    lay_isoclor5 = np.atleast_1d(np.argmax(concentration_mound>1.75))[0]
-    lay_isoclor10 = np.atleast_1d(np.argmax(concentration_mound>3.5))[0]
+    concentration_mound[-1] = 35
+    lay_isoclor1 = np.atleast_1d(np.argmax(concentration_mound>0.35))[0] + inland_lay
+    lay_isoclor5 = np.atleast_1d(np.argmax(concentration_mound>1.75))[0] + inland_lay
+    lay_isoclor10 = np.atleast_1d(np.argmax(concentration_mound>3.5))[0] + inland_lay
 
     f, ax = plt.subplots(figsize=figsize)
     ax.plot(np.flipud(concentration_edge), y)
@@ -188,11 +190,12 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
 
     # plot isoclors
     delv = pars.Lz/pars.nlay
-    ax.axhline((lay_isoclor1/pars.nlay-pars.offshore_proportion)*delv, c='b', alpha=0.5, zorder = -1, linestyle=':', label=r"mound 1% isoclor")
-    ax.axhline((lay_isoclor5/pars.nlay-pars.offshore_proportion)*delv, c='g', alpha=0.5, zorder = -1, linestyle=':', label=r"mound 5% isoclor")
-    ax.axhline((lay_isoclor10/pars.nlay-pars.offshore_proportion)*delv, c='r', alpha=0.5, zorder = -1, linestyle=':', label=r"mound 10% isoclor")
+    ax.axhline(pars.Lz-pars.sea_level-(lay_isoclor1)*delv, c='b', alpha=0.5, zorder = -1, linestyle=':', label=r"mound 1% isoclor")
+    ax.axhline(pars.Lz-pars.sea_level-(lay_isoclor5)*delv, c='g', alpha=0.5, zorder = -1, linestyle='-', label=r"mound 5% isoclor")
+    ax.axhline(pars.Lz-pars.sea_level-(lay_isoclor10)*delv, c='r', alpha=0.5, zorder = -1, linestyle='--', label=r"mound 10% isoclor")
 
     ax.set_xlim([-5, 40])
+    ax.legend()
 
     ws = os.path.join(f'.\\figures\\{name}')
     if not os.path.exists(ws):

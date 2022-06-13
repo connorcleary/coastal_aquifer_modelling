@@ -172,12 +172,18 @@ def find_mound(qx, pars):
     min_flux_position = 0
     
     for k in range(pars.nlay):
-        if float(np.max(qx[k,:])) != float(0):
+        if float(np.max(qx[k,1:])) != float(0):
             for i in range(pars.ncol):
                 if float(qx[k,i]) != float(0) and np.abs(qx[k,i]) < min_flux_value:
                     min_flux_value = np.abs(qx[k,i])
                     min_flux_position = i
             break
+
+    if pars.W_net == 0:
+        if pars.h_b>0:
+            min_flux_position = pars.ncol - 1
+        else:
+            min_flux_position = 0
 
     mound = (min_flux_position-pars.ncol*pars.offshore_proportion)*pars.Lx/pars.ncol
 
