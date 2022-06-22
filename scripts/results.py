@@ -171,9 +171,10 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
     mound_col = np.int((mound/pars.Lx+pars.offshore_proportion)*pars.ncol)
 
     # truncate to just include layers below the inland boundary
-    concentration_mound = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,mound_col])
-    concentration_edge = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1:,row,-1])
-    y=np.linspace(-pars.sea_level, pars.h_b, int(pars.nlay*((pars.sea_level+pars.h_b)/pars.Lz)))
+    concentration_mound = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b)):,row,mound_col])
+    concentration_edge = np.copy(concentration[-1,int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b)):,row,-1])
+
+    y=np.linspace(-pars.sea_level, pars.h_b, len(concentration_edge))
 
     inland_lay = int(pars.nlay/pars.Lz*(pars.Lz-pars.sea_level-pars.h_b))+1
     # find isoclors at the mound column
@@ -195,6 +196,7 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
     ax.axhline(pars.Lz-pars.sea_level-(lay_isoclor10)*delv, c='r', alpha=0.5, zorder = -1, linestyle='--', label=r"mound 10% isoclor")
 
     ax.set_xlim([-5, 40])
+    ax.set_ylim([-pars.sea_level-0.5, pars.Lz-pars.sea_level+0.5])
     ax.legend()
 
     ws = os.path.join(f'.\\figures\\{name}')
@@ -264,4 +266,12 @@ def save_metrics(name, row=0, fraction=0.05):
 
             f.write(f"{string}: {metric} {unit}\n")
 
-    
+    concentration_b = concentration[-1, :, row, -1]
+    # cell centres
+    depths = np.linspace(pars.Lz-pars.sea_level-(pars.Lz/(2*pars.nlay)), -pars.sea_level+(pars.Lz/(2*pars.nlay)), pars.nlay)
+    lays = np.linspace(0,109, 110)
+
+    headers = ["layer", "masl", "C"]
+    results = np.vstack((headers, np.stack((lays, depths, concentration_b)).T))
+    np.savetxt(f"{ws}\\boundary_concentrations.csv", results, delimiter=",", fmt ='% s')
+    pass
