@@ -38,7 +38,7 @@ class ModelParameters:
     
     def __init__(self, name="none", Lx=200, Ly=1, Lz=5.5, offshore_proportion=0.025, 
                 sea_level=5, ncol=400, nrow=1, nlay=110, K=10, anis=1, sy=0.24, 
-                ss=1e-5, n=0.3, alpha_L=1, alpha_anisT=0.1, alpha_anisV=0.1, 
+                ss=1e-5, n=0.3, alpha_L=1, alpha_anisT=0.1, alpha_anisV=0.01, 
                 diff=8.64e-5, perlen=1e5, dt=1e2, h_b=0, W_net=0.00285,
                 rho_f=1000, rho_s=1025, exe_file=r".\exe_path.txt", frequency=1):
 

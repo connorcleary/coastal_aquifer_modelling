@@ -333,7 +333,7 @@ def save_results(name, concentration, head, qx, qy, qz):
     """
     ws = os.path.join(f'.\\results\\{name}')
     if not os.path.exists(ws):
-        os.mkdir(ws)
+        os.makedirs(ws)
 
     with open(os.path.join(ws, f"qx.npy"), 'wb') as f: np.save(f, np.array(qx))
     with open(os.path.join(ws, f"qy.npy"), 'wb') as f: np.save(f, np.array(qy))

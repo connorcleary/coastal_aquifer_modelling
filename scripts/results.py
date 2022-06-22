@@ -84,7 +84,7 @@ def plot_results(name, timestep=-1, row=0, return_axs=False, figsize=(12,6),
     
     ws = os.path.join(f'.\\figures\\{name}')
     if not os.path.exists(ws):
-        os.mkdir(ws)
+        os.makedirs(ws)
     plt.savefig(f"{ws}\\head_and_concentration", dpi=300)
 
     # return axs objects if necessary
@@ -145,7 +145,7 @@ def plot_evolutions(name, row=0, fraction = 0.01, return_axs=False, figsize=(18,
 
     ws = os.path.join(f'.\\figures\\{name}')
     if not os.path.exists(ws):
-        os.mkdir(ws)
+        os.makedirs(ws)
         
     plt.savefig(f"{ws}\\metric_evolutions", dpi=300)
 
@@ -199,7 +199,7 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
 
     ws = os.path.join(f'.\\figures\\{name}')
     if not os.path.exists(ws):
-        os.mkdir(ws)
+        os.makedirs(ws)
         
     plt.savefig(f"{ws}\inland_boundary_salinity", dpi=300)
 
@@ -255,7 +255,7 @@ def save_metrics(name, row=0, fraction=0.05):
 
     ws = os.path.join(f'.\\results\\{name}')
     if not os.path.exists(ws):
-        os.mkdir(ws)
+        os.makedirs(ws)
 
     with open(f"{ws}\\metrics_{fraction}.txt", "w") as f:
 
