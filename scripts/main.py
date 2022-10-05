@@ -13,18 +13,18 @@ def create_run_plot_model(name, **kwargs):
             None
     """
 
-    # pars = ModelParameters(name, **kwargs)
-    # swt = cam.build_steady_model(pars)
-    # cam.run_model(swt)
-    # concentration, head, qx, qy, qz = cam.extract_results(name)
-    # results.plot_results(name)
-    # results.plot_evolutions(name)
+    pars = ModelParameters(name, **kwargs)
+    swt = cam.build_steady_model(pars)
+    cam.run_model(swt)
+    concentration, head, qx, qy, qz = cam.extract_results(name)
+    results.plot_results(name)
+    results.plot_evolutions(name)
     results.save_metrics(name, fraction=0.05)
     results.plot_boundary_concentration(name)
 
 
 def main():
-    create_run_plot_model("case10d_less_vertical", )
+    create_run_plot_model("elongated", Lx=2000)
 
 if __name__=="__main__":
     main()
