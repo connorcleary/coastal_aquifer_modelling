@@ -159,6 +159,37 @@ def find_boundary_fluxes(conc, qx, qz, pars, fraction=0.05):
            onshore_inflow_s, onshore_inflow_f, onshore_outflow_s, onshore_outflow_f
 
 
+def find_wetland_flux(conc, qx, qz, pars):
+
+    conc_flux = 0
+
+    delv = pars.Lz/pars.nlay
+    delr = pars.Lx/pars.ncol
+    wetland_base = [[int((pars.Lz-pars.sea_level-pars.z_w)/delv), col] for col in  
+                    range(int((pars.offshore_proportion*pars.Lx+pars.x_w)/delr), 
+                            int((pars.offshore_proportion*pars.Lx+pars.x_w+pars.Lx_w)/delr))]
+    
+    wetland_left = [[int(lay), int((pars.offshore_proportion*pars.Lx+pars.x_w)/delr)-1] for lay in  
+                    range(int((pars.Lz-pars.sea_level-pars.h_w)/delv), 
+                            int((pars.Lz-pars.sea_level-pars.z_w)/delv))]
+
+
+    wetland_right =  [[int(lay), int((pars.offshore_proportion*pars.Lx+pars.x_w+pars.Lx_w)/delr)] for lay in  
+                    range(int((pars.Lz-pars.sea_level-pars.h_w)/delv), 
+                            int((pars.Lz-pars.sea_level-pars.z_w)/delv))]
+
+    for cell in wetland_base:
+        conc_flux += np.max([0,-1*qz[cell[0], cell[1]]*conc[cell[0], cell[1]]])
+
+    for cell in wetland_left:
+        conc_flux += np.max([0,qx[cell[0], cell[1]]*conc[cell[0], cell[1]]])
+
+    for cell in wetland_right:
+        conc_flux += np.max([0,-1*qx[cell[0], cell[1]]*conc[cell[0], cell[1]]])
+
+    return conc_flux
+
+
 def find_mound(qx, pars):
     """
         Find the position of the mound, based on the smallest horizontal flux

@@ -40,7 +40,8 @@ class ModelParameters:
                 sea_level=5, ncol=400, nrow=1, nlay=110, K=10, anis=1, sy=0.24, 
                 ss=1e-5, n=0.3, alpha_L=1, alpha_anisT=0.1, alpha_anisV=0.01, 
                 diff=8.64e-5, perlen=1e5, dt=1e2, h_b=0, W_net=0.00285,
-                rho_f=1000, rho_s=1025, exe_file=r".\exe_path.txt", frequency=1):
+                rho_f=1000, rho_s=1025, exe_file=r".\exe_path.txt", frequency=1, 
+                x_w=0, Lx_w=10, Ly_w=1, z_w=0, h_w=0):
 
 
         self.name=name
@@ -70,6 +71,12 @@ class ModelParameters:
         with open(exe_file, 'r') as f: self.exe_path=f.readline()
         self.frequency=frequency
         self.nstp=perlen/dt
+        self.x_w=x_w
+        self.Lx_w=Lx_w
+        self.Ly_w=Ly_w
+        self.z_w=z_w
+        self.h_w=h_w
+
         self.save_parameters()
 
     def __getstate__(self):

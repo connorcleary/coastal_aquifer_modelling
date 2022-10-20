@@ -24,7 +24,8 @@ def create_run_plot_model(name, **kwargs):
 
 
 def main():
-    create_run_plot_model("elongated", Lx=2000)
+    #create_run_plot_model("elongated", Lx=2000)
+    create_run_plot_model("wetland9d_low", h_b = -1.1545, x_w=50, Lx_w=10, z_w=-0.75, h_w=-0.1)
 
 if __name__=="__main__":
     main()

@@ -266,6 +266,9 @@ def save_metrics(name, row=0, fraction=0.05):
 
             f.write(f"{string}: {metric} {unit}\n")
 
+        if pars.x_w != 0:
+            f.write(f"Concentration flux to wetland: {proc.find_wetland_flux(concentration[-1,:,row,:], qx[-1,:,row,:], qz[-1,:,row,:], pars)} kg m^-1 day^-1")
+
     concentration_b = concentration[-1, :, row, -1]
     # cell centres
     depths = np.linspace(pars.Lz-pars.sea_level-(pars.Lz/(2*pars.nlay)), -pars.sea_level+(pars.Lz/(2*pars.nlay)), pars.nlay)

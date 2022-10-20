@@ -62,6 +62,7 @@ def build_steady_model(pars):
     offshore_boundary_cells = []
     onshore_boundary_cells = []
     #  surface_boundary_cells = []
+    wetland_cells = []
 
     # add inactive cells
     for i in range(int(pars.ncol*pars.offshore_proportion)):
@@ -78,10 +79,22 @@ def build_steady_model(pars):
             if k >= np.floor((pars.Lz-pars.sea_level-pars.h_b)/delv):
                 onshore_boundary_cells.append([k, j, pars.ncol-1])
 
+
     # add the seafloor
     for i in range(int(pars.ncol*pars.offshore_proportion)):
          for j in range(pars.nrow):
             offshore_boundary_cells.append([int((pars.Lz-pars.sea_level)/delv), j, i])
+
+    # add wetland cells
+    if pars.x_w != 0:
+        for j in range(pars.nrow):
+            for i in range(int((pars.offshore_proportion*pars.Lx+pars.x_w)/delr), 
+                            int((pars.offshore_proportion*pars.Lx+pars.x_w+pars.Lx_w)/delr)):
+                for k in range(int((pars.Lz-pars.sea_level-pars.h_w)/delv), int((pars.Lz-pars.sea_level-pars.z_w)/delv)):
+                    wetland_cells.append([k, j, i])
+                for k in range(0, int((pars.Lz-pars.sea_level-pars.h_w)/delv)):
+                    inactive_cells.append([k, j, i])
+
 
     # # add the recharge surface 
     # for i in range(int(offshore_proportion*ncol), ncol):
@@ -92,7 +105,7 @@ def build_steady_model(pars):
     ibound = np.ones((pars.nlay, pars.nrow, pars.ncol), dtype=np.int32)
     for cell in inactive_cells:
         ibound[cell[0], cell[1], cell[2]] = 0
-    for cell in onshore_boundary_cells+offshore_boundary_cells:
+    for cell in onshore_boundary_cells+offshore_boundary_cells+wetland_cells:
         ibound[cell[0], cell[1], cell[2]] = -1
 
     # define starting heads
@@ -155,6 +168,11 @@ def build_steady_model(pars):
     for cell in offshore_boundary_cells:
         ssm_sp1.append([cell[0], cell[1], cell[2], 35.0, itype["BAS6"]])
         chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level, pars.sea_level])
+
+    # define wetland boundary data
+    for cell in wetland_cells:
+        ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["BAS6"]])
+        chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.sea_level+pars.h_w])
         
     ssm_data[0] = ssm_sp1
     chd_data[0] = chd_sp1
@@ -236,7 +254,7 @@ def build_steady_model(pars):
     # find number of sinks and sources
     mxss = int(np.ceil(2*pars.nlay*pars.nrow + 
                         pars.nrow*pars.ncol*pars.offshore_proportion+1 +
-                        pars.nrow*pars.ncol))
+                        pars.nrow*pars.ncol+pars.Lx_w*pars.nrow*(pars.x_w!=0)))
 
     # define source sink mixing package
     ssm = flopy.mt3d.Mt3dSsm(
