@@ -90,9 +90,9 @@ def build_steady_model(pars):
         for j in range(pars.nrow):
             for i in range(int((pars.offshore_proportion*pars.Lx+pars.x_w)/delr), 
                             int((pars.offshore_proportion*pars.Lx+pars.x_w+pars.Lx_w)/delr)):
-                for k in range(int((pars.Lz-pars.sea_level-pars.h_w)/delv), int((pars.Lz-pars.sea_level-pars.z_w)/delv)):
+                for k in range(int((pars.Lz-pars.sea_level-pars.h_w)/delv)+1, int((pars.Lz-pars.sea_level-pars.z_w)/delv)):
                     wetland_cells.append([k, j, i])
-                for k in range(0, int((pars.Lz-pars.sea_level-pars.h_w)/delv)):
+                for k in range(0, int((pars.Lz-pars.sea_level-pars.h_w)/delv)+1):
                     inactive_cells.append([k, j, i])
 
 
