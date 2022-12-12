@@ -62,9 +62,9 @@ def plot_results(name, timestep=-1, row=0, return_axs=False, figsize=(12,6),
             	                cmap=cmap, vmax=35, vmin=0)
 
     # plot arrows
-    axs[1].quiver(plth.sample_grid_data(x, vector_T, vector_T), plth.sample_grid_data(y, vector_T, vector_T), 
-                    plth.sample_grid_data(np.flipud(qx[timestep,:,row,:]), vector_T, vector_T), 
-                    -plth.sample_grid_data(np.flipud(qz[timestep,:,row,:]), vector_T, vector_T), 
+    axs[1].quiver(plth.sample_grid_data(x, vector_T, 10*vector_T), plth.sample_grid_data(y, vector_T,vector_T), 
+                    plth.sample_grid_data(np.flipud(qx[timestep,:,row,:]), 10*vector_T, vector_T), 
+                    -plth.sample_grid_data(np.flipud(qz[timestep,:,row,:]), 10*vector_T, vector_T), 
                     color=arrow_c, width=width)
 
     axs[0].set_aspect(aspect)

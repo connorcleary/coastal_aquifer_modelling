@@ -61,7 +61,11 @@ def find_mixing_centroid(conc, pars, fraction=0.05):
                 mix_n += 1 
                 x_tot += (j-pars.ncol*pars.offshore_proportion)*(pars.Lx/pars.ncol)
 
-    centroid = x_tot/mix_n
+    if mix_n != 0:
+        centroid = x_tot/mix_n
+    else:
+        centroid = 0
+        
     return centroid
 
 

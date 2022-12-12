@@ -134,6 +134,7 @@ def build_steady_model(pars):
             laywet=laywet,
             ss=pars.ss, # not sure about these ones
             sy=pars.sy,
+            layvka=1,
         )
 
     # create solver package
@@ -203,7 +204,8 @@ def build_steady_model(pars):
         )
 
     # set starting concentrations
-    sconc = 35.0*np.ones((pars.nlay, pars.nrow, pars.ncol))
+    sconc = 0.0*np.ones((pars.nlay, pars.nrow, pars.ncol))
+    sconc[:, :, 0] = 35.0
 
     # define basic transport package
     btn = flopy.mt3d.Mt3dBtn(
@@ -218,21 +220,19 @@ def build_steady_model(pars):
         )
 
     # define advection package
-    adv = flopy.mt3d.Mt3dAdv(
-            model=swt, 
-            mixelm=0,
-            dceps=1.0e-5,
-            nplane=1,
-            npl=16,
-            nph=16,
-            npmin=4,
-            npmax=32,
-            dchmoc=1.0e-3,
-            nlsink=1,
-            npsink=16,
-            percel=0.5
-        )
 
+    adv = flopy.mt3d.Mt3dAdv(swt, 
+        mixelm=0,
+        dceps=1.0e-5,
+        nplane=1,
+        npl=16,
+        nph=16,
+        npmin=4,
+        npmax=32,
+        dchmoc=1.0e-3,
+        nlsink=1,
+        npsink=16,
+        percel=0.5)
     # define dispersion package
     dsp = flopy.mt3d.Mt3dDsp(
             swt, 
