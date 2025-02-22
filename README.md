@@ -1,5 +1,5 @@
 # coastal_aquifer_modelling
- Create, run and postprocess coastal aquifer models
+ Create, run and postprocess coastal aquifer models - with wetlands/drains being a key feature
 
 To use:
  1. Clone repository
