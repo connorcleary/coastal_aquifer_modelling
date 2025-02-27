@@ -34,6 +34,7 @@ class ModelParameters:
             rho_s: salt water density [kg/m^3]
             exe_path: path to the seawat executable
             frequency: frequency of timesteps save for results
+
     """
     
     def __init__(self, name="none", Lx=200, Ly=1, Lz=5.5, offshore_proportion=0.025, 
@@ -41,7 +42,7 @@ class ModelParameters:
                 ss=1e-5, n=0.3, alpha_L=1, alpha_anisT=0.1, alpha_anisV=0.01, 
                 diff=8.64e-5, perlen=1e5, dt=1e2, h_b=0, W_net=0.00285,
                 rho_f=1000, rho_s=1025, exe_file=r".\exe_path.txt", frequency=1, 
-                x_w=0, Lx_w=10, Ly_w=1, z_w=0, h_w=0):
+                x_w=0, Lx_w=10, Ly_w=1, z_w=0, h_w=0, wetland_as_drain=True, drain_conductance=None):
 
 
         self.name=name
@@ -76,6 +77,11 @@ class ModelParameters:
         self.Ly_w=Ly_w
         self.z_w=z_w
         self.h_w=h_w
+        self.wetland_as_drain=wetland_as_drain
+        if drain_conductance==None:
+            self.drain_conductance=K
+        else:
+            self.drain_conductance=drain_conductance
 
         self.save_parameters()
 

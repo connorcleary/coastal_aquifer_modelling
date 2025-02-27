@@ -5,7 +5,6 @@ import pickle
 import flopy.utils.binaryfile as bf
 from pars import ModelParameters, load_parameters
 
-
 def build_steady_model(pars):
     '''
         A function to build a coastal aquifer model.
@@ -95,7 +94,6 @@ def build_steady_model(pars):
                 for k in range(0, int((pars.Lz-pars.sea_level-pars.h_w)/delv)+1):
                     inactive_cells.append([k, j, i])
 
-
     # # add the recharge surface 
     # for i in range(int(offshore_proportion*ncol), ncol):
     #     for j in range(nrow):
@@ -105,11 +103,15 @@ def build_steady_model(pars):
     ibound = np.ones((pars.nlay, pars.nrow, pars.ncol), dtype=np.int32)
     for cell in inactive_cells:
         ibound[cell[0], cell[1], cell[2]] = 0
-    for cell in onshore_boundary_cells+offshore_boundary_cells+wetland_cells:
-        ibound[cell[0], cell[1], cell[2]] = -1
+    if not pars.wetland_as_drain:
+        for cell in onshore_boundary_cells+offshore_boundary_cells+wetland_cells:
+            ibound[cell[0], cell[1], cell[2]] = -1
+    else:
+        for cell in onshore_boundary_cells+offshore_boundary_cells:
+            ibound[cell[0], cell[1], cell[2]] = -1
 
     # define starting heads
-    strt = pars.sea_level*np.ones((pars.nlay, pars.nrow, pars.ncol))
+    strt = pars.Lz*np.ones((pars.nlay, pars.nrow, pars.ncol))
 
     # create basic package
     bas = flopy.modflow.ModflowBas(
@@ -159,6 +161,9 @@ def build_steady_model(pars):
     itype = flopy.mt3d.Mt3dSsm.itype_dict()
     ssm_data = {}
     ssm_sp1 = []
+    if pars.wetland_as_drain:
+        drn_data = {}
+        drn_sp1 = []
 
     # define onshore boundary data
     for cell in onshore_boundary_cells:
@@ -172,11 +177,24 @@ def build_steady_model(pars):
 
     # define wetland boundary data
     for cell in wetland_cells:
-        ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["BAS6"]])
-        chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.sea_level+pars.h_w])
-        
+        if not pars.wetland_as_drain:
+            ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["BAS6"]])
+            chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.sea_level+pars.h_w])
+        else:
+            ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["DRN"]])
+            drn_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.drain_conductance])
+
+
     ssm_data[0] = ssm_sp1
     chd_data[0] = chd_sp1
+
+    if pars.wetland_as_drain and len(wetland_cells) > 0:
+        drn_data[0] = drn_sp1
+        drn = flopy.modflow.ModflowDrn(
+            model=swt,
+            stress_period_data=drn_data,
+            ipakcb=ipakcb
+        )
 
     # define constant head package
     chd = flopy.modflow.ModflowChd(
