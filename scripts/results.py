@@ -6,6 +6,29 @@ import plot_helpers as plth
 import os
 import post_processing as proc
 
+def plot_salinity(pars, ax, conc, qx, qz, cmap="viridis", row=0, x_step=10, z_step=5, width=0.002, arrow_c="white"):
+
+    x = np.linspace(-pars.Lx*pars.offshore_proportion, pars.Lx-pars.Lx*pars.offshore_proportion, pars.ncol)
+    y = np.linspace(-pars.sea_level, pars.Lz-pars.sea_level, pars.nlay)
+
+    concentration_array = conc[:, row, :]
+    for i in range(pars.nlay):
+        for j in range(pars.ncol):
+            if concentration_array[i, j] == np.float32(1.e30):
+                concentration_array[i, j] = np.nan
+
+    conccm = ax.pcolormesh(x, y, np.flipud(concentration_array),
+                               cmap=cmap, vmax=35, vmin=0)
+
+    # plot arrows
+    X, Y = np.meshgrid(x[::x_step], y[::z_step])
+    ax.quiver(X, Y, np.flipud(qx[::z_step, row, ::x_step]), np.flipud(qz[::z_step, row, ::x_step]),
+                  color=arrow_c, width=width)
+    ax.set_box_aspect(0.25)
+    return ax
+
+
+
 def plot_results(name, timestep=-1, row=0, return_axs=False, figsize=(12,6),
     cmap="viridis", arrow_c="white", aspect=8, x_step=10, z_step=10, width=0.002, fmt="%3.2f"):
     """
@@ -83,13 +106,15 @@ def plot_results(name, timestep=-1, row=0, return_axs=False, figsize=(12,6),
     headcb.ax.set_title('Head (m)', fontsize = 'small')
     conccb.ax.set_title('Salinity (kg/m^3)', fontsize = 'small')
     
-    ws = os.path.join(f'.\\figures\\{name}')
-    if not os.path.exists(ws):
-        os.makedirs(ws)
-    plt.savefig(f"{ws}\\head_and_concentration", dpi=300)
 
     # return axs objects if necessary
-    if return_axs: return axs
+    if return_axs:
+        return axs
+    else:
+        ws = os.path.join(f'.\\figures\\{name}')
+        if not os.path.exists(ws):
+            os.makedirs(ws)
+        plt.savefig(f"{ws}\\head_and_concentration", dpi=300)
 
 
 def plot_evolutions(name, row=0, fraction = 0.01, return_axs=False, figsize=(18,6), interval=20):
@@ -207,6 +232,28 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
     plt.savefig(f"{ws}\inland_boundary_salinity", dpi=300)
 
     if return_axs: return ax
+
+def plot_sea_level_rise_results(name, initial_conditions=None, rise_length=365*100):
+    f, axs = plt.subplots(4, 3, figsize=(10,6))
+    pars = load_parameters(name)
+    concentration, head, qx, qy, qz = cam.load_results(name)
+    axs = axs.flatten()
+    if initial_conditions is None:
+        i_init = int(pars.perlen/pars.dt/pars.frequency)
+        plot_salinity(pars, axs[0], concentration[i_init], qx[i_init], qz[i_init])
+        axs[0].set_title("Steady state")
+    else:
+        raise NotImplementedError("still need to set up using different initial conditions")
+
+    for i in range(1, 11):
+        step = int(rise_length/10/(pars.dt*pars.frequency))
+        plot_salinity(pars, axs[i], concentration[i_init+i*step], qx[i_init+i*step], qz[i_init+i*step])
+        axs[i].set_title(f"{i*rise_length/10/365:1.0f} years")
+
+    axs[-1].set_axis_off()
+
+    plt.tight_layout()
+    plt.show()
 
 
 def save_metrics(name, row=0, fraction=0.05):

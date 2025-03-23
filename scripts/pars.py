@@ -26,7 +26,7 @@ class ModelParameters:
                 !!! I've set this as 0.1, but which werner says is the transverse ratio:
                     but there is no mention of vertical dispersivity !!!
             diff: molecular diffusion coefficient
-            perlen: simulation period length [days]
+            perlen: simulation period length for the steady state [days]
             dt: timestep [days]
             h_b: inland boundary head
             W_net: recharge [m\day]
@@ -77,7 +77,6 @@ class ModelParameters:
         self.Ly_w=Ly_w
         self.z_w=z_w
         self.h_w=h_w
-        self.wetland_as_drain=wetland_as_drain
         if drain_conductance==None:
             self.drain_conductance=K
         else:

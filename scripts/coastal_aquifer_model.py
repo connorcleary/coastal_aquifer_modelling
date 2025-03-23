@@ -5,19 +5,136 @@ import pickle
 import flopy.utils.binaryfile as bf
 from pars import ModelParameters, load_parameters
 
-def build_steady_model(pars):
+def _create_temporal_discretization(pars, sea_level_rise, rise_length, rise_type, rise_rate, initial_conditions):
+    perlen = []
+    nstep = []
+    steady = []
+    if initial_conditions is None:
+        perlen.append(pars.perlen)
+        nstep.append(pars.perlen/pars.dt)
+        steady.append(True)
+        if sea_level_rise == 0:
+            return perlen, nstep, steady
+    if rise_type is 'step':
+        perlen.append(rise_length)
+        nstep.append(np.round(rise_length/pars.dt))
+        steady.append(False)
+        return perlen, nstep, steady
+    if rise_type is 'linear':
+        for i in range(int(rise_length/pars.dt)):
+            perlen.append(pars.dt)
+            nstep.append(1)
+            steady.append(False)
+        return perlen, nstep, steady        
+    
+def _create_cell_groups(pars, delr, delv, delc):
+    # define cell groups
+    inactive_cells = []
+    offshore_boundary_cells = []
+    onshore_boundary_cells = []
+    #  surface_boundary_cells = []
+    wetland_cells = []
+
+    # add inactive cells
+    for i in range(int(pars.ncol * pars.offshore_proportion)):
+        for j in range(pars.nrow):
+            for k in range(0, int((pars.Lz - pars.sea_level) / delv)):
+                inactive_cells.append([k, j, i])
+
+    # add cells on ends of domain
+    for k in range(pars.nlay):
+        for j in range(pars.nrow):
+            if k >= np.floor((pars.Lz - pars.sea_level) / delv):  # if the cell is below sea level
+                offshore_boundary_cells.append([k, j, 0])
+
+            if k >= np.floor((pars.Lz - pars.sea_level - pars.h_b) / delv):
+                onshore_boundary_cells.append([k, j, pars.ncol - 1])
+
+    # add the seafloor
+    for i in range(int(pars.ncol * pars.offshore_proportion)):
+        for j in range(pars.nrow):
+            offshore_boundary_cells.append([int((pars.Lz - pars.sea_level) / delv), j, i])
+
+    # add wetland cells
+    if pars.x_w != 0:
+        for j in range(pars.nrow):
+            for i in range(int((pars.offshore_proportion * pars.Lx + pars.x_w) / delr),
+                           int((pars.offshore_proportion * pars.Lx + pars.x_w + pars.Lx_w) / delr)):
+                for k in range(int((pars.Lz - pars.sea_level - pars.h_w) / delv) + 1,
+                               int((pars.Lz - pars.sea_level - pars.z_w) / delv)):
+                    wetland_cells.append([k, j, i])
+                for k in range(0, int((pars.Lz - pars.sea_level - pars.h_w) / delv) + 1):
+                    inactive_cells.append([k, j, i])
+
+    # create ibound array
+    ibound = np.ones((pars.nlay, pars.nrow, pars.ncol), dtype=np.int32)
+    for cell in inactive_cells:
+        ibound[cell[0], cell[1], cell[2]] = 0
+    else:
+        for cell in onshore_boundary_cells + offshore_boundary_cells:
+            ibound[cell[0], cell[1], cell[2]] = -1
+            
+    return inactive_cells, offshore_boundary_cells, onshore_boundary_cells, wetland_cells, ibound
+
+def _create_stress_period_data(pars, nper, sea_level_rise, rise_length, rise_type, rise_rate, initial_conditions,
+                               wetland_cells, onshore_boundary_cells, offshore_boundary_cells):
+    drn_spd = {per: [] for per in range(nper)}
+    chd_spd = {per: [] for per in range(nper)}
+    ssm_spd = {per: [] for per in range(nper)}
+    oc_spd = {}
+    itype = flopy.mt3d.Mt3dSsm.itype_dict()
+    for kstp in range(0, int(pars.perlen / pars.dt), pars.frequency):
+        oc_spd[(0, kstp)] = ["save head", "save budget"]
+
+    for cell in wetland_cells:
+        for per in range(nper):
+            drn_spd[per].append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.drain_conductance])
+            ssm_spd[per].append([cell[0], cell[1], cell[2], 0.0, itype["DRN"]])
+
+    for cell in onshore_boundary_cells:
+        for per in range(nper):
+            ssm_spd[per].append([cell[0], cell[1], cell[2], 0, itype["BAS6"]])
+            chd_spd[per].append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_b, pars.sea_level+pars.h_b])
+
+    if initial_conditions is None:
+        for cell in offshore_boundary_cells:
+            ssm_spd[0].append([cell[0], cell[1], cell[2], 35.0, itype["BAS6"]])
+            chd_spd[0].append([cell[0], cell[1], cell[2], pars.sea_level, pars.sea_level])
+            for kstp in range(0, int(pars.perlen / pars.dt), pars.frequency):
+                oc_spd[(0, kstp)] = ["save head", "save budget"]
+
+    if rise_type == 'step':
+        for cell in offshore_boundary_cells: #+ _get_extra_chd_cells(pars, sea_level_rise):
+            ssm_spd[1].append([cell[0], cell[1], cell[2], 35.0, itype["BAS6"]])
+            chd_spd[1].append([cell[0], cell[1], cell[2], pars.sea_level+sea_level_rise, pars.sea_level+sea_level_rise])
+            for kstp in range(0, int(rise_length / pars.dt), pars.frequency):
+                oc_spd[(1, kstp)] = ["save head", "save budget"]
+
+    if rise_type == 'linear':
+        for per in range(1, nper):
+            sea_level_rise_increment = per/nper*sea_level_rise
+            for cell in offshore_boundary_cells: #+ _get_extra_chd_cells(pars, sea_level_rise_increment):
+                ssm_spd[per].append([cell[0], cell[1], cell[2], 35.0, itype["BAS6"]])
+                chd_spd[per].append([cell[0], cell[1], cell[2], pars.sea_level + sea_level_rise_increment,
+                                   pars.sea_level + sea_level_rise_increment])
+            if per%pars.frequency == 0 or per == nper-1:
+                oc_spd[(per, 0)] = ["save head", "save budget"]
+
+    return drn_spd, chd_spd, oc_spd, ssm_spd
+
+def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365, rise_time_series=None, initial_conditions=None):
     '''
         A function to build a coastal aquifer model.
-
-        Input: 
-            pars: parameters object
-
-        Outputs:
-            swt: groundwater flow and transport model
+        :param pars: parameters defining the geometry of the model
+        :param steady: bool, whether the model is steady or not
+        :param sea_level_rise: float, int, how much sea level rise to apply
+        :param rise_length: float, int, time to apply sea-level rise over (days)
+        :param rise_type: string, how the sea level rise is applied, one 'step', 'linear' # todo implement for custom
+        :param rise_time_series: if rise_type is 'custom', then this a time series showing the curve
+        :param initial_conditions: string, name of the model to get initial conditions from.
+        :return:
     '''
 
-    
-        
     # create model workspace
     model_ws = f".\\model_files\\{pars.name}"
     if not os.path.exists(model_ws):
@@ -32,11 +149,15 @@ def build_steady_model(pars):
     delv = pars.Lz/pars.nlay
 
     # define top and bottoms
+    assert pars.Lz-pars.sea_level >= sea_level_rise, "Model top must be higher than sea-level"
     top = pars.Lz
     botm = np.linspace(top-delv, 0, pars.nlay)
 
     # something I've copied
     ipakcb = 53
+
+    perlen, nstep, steady = _create_temporal_discretization(pars, sea_level_rise, rise_length, rise_type, rise_time_series, initial_conditions,
+                                                           )
 
     # define discretization package
     dis = flopy.modflow.ModflowDis(
@@ -44,74 +165,25 @@ def build_steady_model(pars):
             nlay=pars.nlay,
             nrow=pars.nrow,
             ncol=pars.ncol,
-            nper=1,
+            nper=len(perlen),
             itmuni=4, # four for days
             delr=delr,
             delc=delc,
             laycbd=0,
             top=top,
             botm=botm,
-            perlen=pars.perlen,
-            nstp=pars.perlen/pars.dt,
-            steady=True
+            perlen=perlen,
+            nstp=nstep,
+            steady=steady
         )
 
-    # define cell groups
-    inactive_cells = []
-    offshore_boundary_cells = []
-    onshore_boundary_cells = []
-    #  surface_boundary_cells = []
-    wetland_cells = []
-
-    # add inactive cells
-    for i in range(int(pars.ncol*pars.offshore_proportion)):
-        for j in range(pars.nrow):
-            for k in range(0, int((pars.Lz-pars.sea_level)/delv)):
-                inactive_cells.append([k, j, i])
-        
-    # add cells on ends of domain
-    for k in range(pars.nlay):
-        for j in range(pars.nrow):
-            if k >= np.floor((pars.Lz-pars.sea_level)/delv): # if the cell is below sea level
-                offshore_boundary_cells.append([k, j, 0])
-
-            if k >= np.floor((pars.Lz-pars.sea_level-pars.h_b)/delv):
-                onshore_boundary_cells.append([k, j, pars.ncol-1])
-
-
-    # add the seafloor
-    for i in range(int(pars.ncol*pars.offshore_proportion)):
-         for j in range(pars.nrow):
-            offshore_boundary_cells.append([int((pars.Lz-pars.sea_level)/delv), j, i])
-
-    # add wetland cells
-    if pars.x_w != 0:
-        for j in range(pars.nrow):
-            for i in range(int((pars.offshore_proportion*pars.Lx+pars.x_w)/delr), 
-                            int((pars.offshore_proportion*pars.Lx+pars.x_w+pars.Lx_w)/delr)):
-                for k in range(int((pars.Lz-pars.sea_level-pars.h_w)/delv)+1, int((pars.Lz-pars.sea_level-pars.z_w)/delv)):
-                    wetland_cells.append([k, j, i])
-                for k in range(0, int((pars.Lz-pars.sea_level-pars.h_w)/delv)+1):
-                    inactive_cells.append([k, j, i])
-
-    # # add the recharge surface 
-    # for i in range(int(offshore_proportion*ncol), ncol):
-    #     for j in range(nrow):
-    #         surface_boundary_cells.append([0, j, i])
-
-    # create ibound array
-    ibound = np.ones((pars.nlay, pars.nrow, pars.ncol), dtype=np.int32)
-    for cell in inactive_cells:
-        ibound[cell[0], cell[1], cell[2]] = 0
-    if not pars.wetland_as_drain:
-        for cell in onshore_boundary_cells+offshore_boundary_cells+wetland_cells:
-            ibound[cell[0], cell[1], cell[2]] = -1
-    else:
-        for cell in onshore_boundary_cells+offshore_boundary_cells:
-            ibound[cell[0], cell[1], cell[2]] = -1
+    inactive_cells, offshore_boundary_cells, onshore_boundary_cells, wetland_cells, ibound = _create_cell_groups(pars, delr, delv, delc)
 
     # define starting heads
-    strt = pars.Lz*np.ones((pars.nlay, pars.nrow, pars.ncol))
+    if initial_conditions is None:
+        strt = pars.Lz*np.ones((pars.nlay, pars.nrow, pars.ncol))
+    else:
+        raise NotImplementedError
 
     # create basic package
     bas = flopy.modflow.ModflowBas(
@@ -146,74 +218,26 @@ def build_steady_model(pars):
             npcond=1, 
             mxiter=500
         )
-    
 
-    oc_spd = {} 
-    for kstp in range(0, int(pars.perlen/pars.dt),pars.frequency):
-            oc_spd[(0, kstp)] = ["save head", "save budget"]
+    drn_spd, chd_spd, oc_spd, ssm_spd = _create_stress_period_data(pars, len(perlen), sea_level_rise, rise_length, rise_type, rise_time_series, initial_conditions,
+                                                                   wetland_cells, onshore_boundary_cells, offshore_boundary_cells)
 
-    oc = flopy.modflow.ModflowOc(swt, stress_period_data=oc_spd, compact=True)
-
-    # set up constant head stress period data
-    chd_data = {}
-    chd_sp1 = []
-    # Set up source sink data
-    itype = flopy.mt3d.Mt3dSsm.itype_dict()
-    ssm_data = {}
-    ssm_sp1 = []
-    if pars.wetland_as_drain:
-        drn_data = {}
-        drn_sp1 = []
-
-    # define onshore boundary data
-    for cell in onshore_boundary_cells:
-        ssm_sp1.append([cell[0], cell[1], cell[2], 0, itype["BAS6"]])
-        chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_b, pars.sea_level+pars.h_b])
-
-    # define offshore boundary data
-    for cell in offshore_boundary_cells:
-        ssm_sp1.append([cell[0], cell[1], cell[2], 35.0, itype["BAS6"]])
-        chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level, pars.sea_level])
-
-    # define wetland boundary data
-    for cell in wetland_cells:
-        if not pars.wetland_as_drain:
-            ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["BAS6"]])
-            chd_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.sea_level+pars.h_w])
-        else:
-            ssm_sp1.append([cell[0], cell[1], cell[2], 0.0, itype["DRN"]])
-            drn_sp1.append([cell[0], cell[1], cell[2], pars.sea_level+pars.h_w, pars.drain_conductance])
-
-
-    ssm_data[0] = ssm_sp1
-    chd_data[0] = chd_sp1
-
-    if pars.wetland_as_drain and len(wetland_cells) > 0:
-        drn_data[0] = drn_sp1
+    if len(wetland_cells) > 0:
         drn = flopy.modflow.ModflowDrn(
             model=swt,
-            stress_period_data=drn_data,
+            stress_period_data=drn_spd,
             ipakcb=ipakcb
         )
+
+    oc = flopy.modflow.ModflowOc(swt, stress_period_data=oc_spd, compact=True)
 
     # define constant head package
     chd = flopy.modflow.ModflowChd(
             model=swt, 
-            stress_period_data=chd_data, 
+            stress_period_data=chd_spd,
             ipakcb=ipakcb
         )
 
-    # define recharge values
-    # rech = {}
-    # rech_sp1 = []
-    # # rech_spd = np.zeros((pars.nrow, pars.ncol))
-    # # rech_spd[:, int(pars.ncol*pars.offshore_proportion):] = pars.W_net*np.ones((pars.nrow, int(pars.ncol-pars.ncol*pars.offshore_proportion)))
-
-    # for j in range(pars.nrow):
-    #     for i in range(int(pars.ncol*pars.offshore_proportion), ncol):
-
-
-    # rech[0] = rech_sp1
     # create recharge package
     rch = flopy.modflow.ModflowRch(
             model=swt,
@@ -222,8 +246,11 @@ def build_steady_model(pars):
         )
 
     # set starting concentrations
-    sconc = 0.0*np.ones((pars.nlay, pars.nrow, pars.ncol))
-    sconc[:, :, 0] = 35.0
+    if initial_conditions is None:
+        sconc = 0.0*np.ones((pars.nlay, pars.nrow, pars.ncol))
+        sconc[:, :, 0] = 35.0
+    else:
+        raise NotImplementedError
 
     # define basic transport package
     btn = flopy.mt3d.Mt3dBtn(
@@ -238,7 +265,6 @@ def build_steady_model(pars):
         )
 
     # define advection package
-
     adv = flopy.mt3d.Mt3dAdv(swt, 
         mixelm=0,
         dceps=1.0e-5,
@@ -251,6 +277,7 @@ def build_steady_model(pars):
         nlsink=1,
         npsink=16,
         percel=0.5)
+
     # define dispersion package
     dsp = flopy.mt3d.Mt3dDsp(
             swt, 
@@ -277,7 +304,7 @@ def build_steady_model(pars):
     # define source sink mixing package
     ssm = flopy.mt3d.Mt3dSsm(
             model=swt,
-            stress_period_data=ssm_data, 
+            stress_period_data=ssm_spd,
             mxss=mxss
         )
 
