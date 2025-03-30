@@ -42,7 +42,8 @@ class ModelParameters:
                 ss=1e-5, n=0.3, alpha_L=1, alpha_anisT=0.1, alpha_anisV=0.01, 
                 diff=8.64e-5, perlen=1e5, dt=1e2, h_b=0, W_net=0.00285,
                 rho_f=1000, rho_s=1025, exe_file=r".\exe_path.txt", frequency=1, 
-                x_w=0, Lx_w=10, Ly_w=1, z_w=0, h_w=0, wetland_as_drain=True, drain_conductance=None):
+                x_w=0, Lx_w=10, Ly_w=1, z_w=0, h_w=0, wetland_as_drain=True, drain_conductance=None,
+                sea_level_rise=0, rise_type='linear', rise_length=100*365, rise_time_series=None, initial_conditions=None):
 
 
         self.name=name
@@ -81,6 +82,11 @@ class ModelParameters:
             self.drain_conductance=K
         else:
             self.drain_conductance=drain_conductance
+        self.sea_level_rise = sea_level_rise
+        self.rise_type = rise_type
+        self.rise_length = rise_length
+        self.rise_time_series = rise_time_series
+        self.initial_conditions = rise_time_series
 
         self.save_parameters()
 

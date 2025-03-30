@@ -233,12 +233,12 @@ def plot_boundary_concentration(name, return_axs=False, figsize=(6,6), row = 0):
 
     if return_axs: return ax
 
-def plot_sea_level_rise_results(name, initial_conditions=None, rise_length=365*100):
+def plot_sea_level_rise_results(name):
     f, axs = plt.subplots(4, 3, figsize=(10,6))
     pars = load_parameters(name)
     concentration, head, qx, qy, qz = cam.load_results(name)
     axs = axs.flatten()
-    if initial_conditions is None:
+    if pars.initial_conditions is None:
         i_init = int(pars.perlen/pars.dt/pars.frequency)
         plot_salinity(pars, axs[0], concentration[i_init], qx[i_init], qz[i_init])
         axs[0].set_title("Steady state")
@@ -246,14 +246,44 @@ def plot_sea_level_rise_results(name, initial_conditions=None, rise_length=365*1
         raise NotImplementedError("still need to set up using different initial conditions")
 
     for i in range(1, 11):
-        step = int(rise_length/10/(pars.dt*pars.frequency))
+        step = int(pars.rise_length/10/(pars.dt*pars.frequency))
         plot_salinity(pars, axs[i], concentration[i_init+i*step], qx[i_init+i*step], qz[i_init+i*step])
-        axs[i].set_title(f"{i*rise_length/10/365:1.0f} years")
+        axs[i].set_title(f"{i*pars.rise_length/10/365:1.0f} years")
 
     axs[-1].set_axis_off()
 
     plt.tight_layout()
-    plt.show()
+    ws = os.path.join(f'.\\figures\\{name}')
+    if not os.path.exists(ws):
+        os.makedirs(ws)
+
+    plt.savefig(f"{ws}\concentration_snapshots.png", dpi=600)
+
+def plot_drain_discharge_and_salinity(name):
+
+    f, axs = plt.subplots(2, 1, figsize=(6, 6), sharex=True)
+    pars = load_parameters(name)
+    if pars.initial_conditions is not None:
+        raise NotImplementedError
+
+    results = cam.get_drain_results(name)
+    idx = results['times'] > results['times'][-1] - pars.rise_length
+    times = (results['times'][idx] - (results['times'][-1]- pars.rise_length))/365
+    discharges = results['discharge'][idx]
+    concentrations = results['conc'][idx]
+
+    axs[0].plot(times, -discharges)
+    axs[0].set_ylabel("Discharge [m^2/day]")
+    axs[1].plot(times, concentrations)
+    axs[1].set_ylabel("Concentration [PSU]")
+    axs[1].set_xlabel("Time [years]")
+
+    ws = os.path.join(f'.\\figures\\{name}')
+    if not os.path.exists(ws):
+        os.makedirs(ws)
+
+    plt.savefig(f"{ws}\drain_flow_and_concentration.png", dpi=600)
+
 
 
 def save_metrics(name, row=0, fraction=0.05):
@@ -325,4 +355,3 @@ def save_metrics(name, row=0, fraction=0.05):
     headers = ["layer", "masl", "C"]
     results = np.vstack((headers, np.stack((lays, depths, concentration_b)).T))
     np.savetxt(f"{ws}\\boundary_concentrations.csv", results, delimiter=",", fmt ='% s')
-    pass

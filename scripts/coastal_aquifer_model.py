@@ -4,6 +4,7 @@ import os
 import pickle
 import flopy.utils.binaryfile as bf
 from pars import ModelParameters, load_parameters
+import pandas as pd
 
 def _create_temporal_discretization(pars, sea_level_rise, rise_length, rise_type, rise_rate, initial_conditions):
     perlen = []
@@ -15,12 +16,12 @@ def _create_temporal_discretization(pars, sea_level_rise, rise_length, rise_type
         steady.append(True)
         if sea_level_rise == 0:
             return perlen, nstep, steady
-    if rise_type is 'step':
+    if rise_type == 'step':
         perlen.append(rise_length)
         nstep.append(np.round(rise_length/pars.dt))
         steady.append(False)
         return perlen, nstep, steady
-    if rise_type is 'linear':
+    if rise_type == 'linear':
         for i in range(int(rise_length/pars.dt)):
             perlen.append(pars.dt)
             nstep.append(1)
@@ -122,7 +123,7 @@ def _create_stress_period_data(pars, nper, sea_level_rise, rise_length, rise_typ
 
     return drn_spd, chd_spd, oc_spd, ssm_spd
 
-def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365, rise_time_series=None, initial_conditions=None):
+def build_model(pars):
     '''
         A function to build a coastal aquifer model.
         :param pars: parameters defining the geometry of the model
@@ -149,14 +150,14 @@ def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365,
     delv = pars.Lz/pars.nlay
 
     # define top and bottoms
-    assert pars.Lz-pars.sea_level >= sea_level_rise, "Model top must be higher than sea-level"
+    assert pars.Lz-pars.sea_level >= pars.sea_level_rise, "Model top must be higher than sea-level"
     top = pars.Lz
     botm = np.linspace(top-delv, 0, pars.nlay)
 
     # something I've copied
     ipakcb = 53
 
-    perlen, nstep, steady = _create_temporal_discretization(pars, sea_level_rise, rise_length, rise_type, rise_time_series, initial_conditions,
+    perlen, nstep, steady = _create_temporal_discretization(pars, pars.sea_level_rise, pars.rise_length, pars.rise_type, pars.rise_time_series, pars.initial_conditions,
                                                            )
 
     # define discretization package
@@ -180,7 +181,7 @@ def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365,
     inactive_cells, offshore_boundary_cells, onshore_boundary_cells, wetland_cells, ibound = _create_cell_groups(pars, delr, delv, delc)
 
     # define starting heads
-    if initial_conditions is None:
+    if pars.initial_conditions is None:
         strt = pars.Lz*np.ones((pars.nlay, pars.nrow, pars.ncol))
     else:
         raise NotImplementedError
@@ -219,7 +220,8 @@ def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365,
             mxiter=500
         )
 
-    drn_spd, chd_spd, oc_spd, ssm_spd = _create_stress_period_data(pars, len(perlen), sea_level_rise, rise_length, rise_type, rise_time_series, initial_conditions,
+    drn_spd, chd_spd, oc_spd, ssm_spd = _create_stress_period_data(pars, len(perlen), pars.sea_level_rise, pars.rise_length,
+                                                                   pars.rise_type, pars.rise_time_series, pars.initial_conditions,
                                                                    wetland_cells, onshore_boundary_cells, offshore_boundary_cells)
 
     if len(wetland_cells) > 0:
@@ -246,7 +248,7 @@ def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365,
         )
 
     # set starting concentrations
-    if initial_conditions is None:
+    if pars.initial_conditions is None:
         sconc = 0.0*np.ones((pars.nlay, pars.nrow, pars.ncol))
         sconc[:, :, 0] = 35.0
     else:
@@ -317,6 +319,7 @@ def build_model(pars, sea_level_rise=0, rise_type='linear', rise_length=100*365,
             denseslp=0.7143,
             firstdt=pars.dt,
         )
+
     # write input
     swt.write_input() 
 
@@ -415,6 +418,8 @@ def load_results(name):
             concentration, head... : numpy matrices of results
     """
     ws = os.path.join(f'.\\results\\{name}')
+    if not os.path.exists(os.path.join(ws, f"qx.npy")):
+        extract_results(name)
 
     with open(os.path.join(ws, f"qx.npy"), 'rb') as f: qx = np.load(f, allow_pickle=True)
     with open(os.path.join(ws, f"qy.npy"), 'rb') as f: qy = np.load(f, allow_pickle=True)
@@ -422,4 +427,43 @@ def load_results(name):
     with open(os.path.join(ws, f"head.npy"), 'rb') as f: head = np.load(f, allow_pickle=True)
     with open(os.path.join(ws, f"concentration.npy"), 'rb') as f: concentration = np.load(f, allow_pickle=True)
 
-    return concentration, head, qx, qy, qz, 
+    return concentration, head, qx, qy, qz,
+
+def get_drain_results(name):
+    ws = os.path.join(f'.\\results\\{name}')
+    if not os.path.exists(os.path.join(ws, f"drain.npz")):
+        _extract_drain_results(name)
+
+    results = np.load(os.path.join(ws, f"drain.npz"))
+
+    return results
+
+def _extract_drain_results(name):
+
+    pars = load_parameters(name)
+    model_ws = f".\\model_files\\{name}"
+
+    # open binary files
+    cbobj = bf.CellBudgetFile(os.path.join(model_ws, f'{name}.cbc'))
+    ucnobject = bf.UcnFile(os.path.join(model_ws, "MT3D001.UCN"))
+
+    times = cbobj.get_times()
+    drain_discharge = []
+    drain_conc = []
+    _, _, _, wetland_cells, _ = _create_cell_groups(pars, pars.Lx/pars.ncol, pars.Ly/pars.nrow, pars.Lz/pars.nlay)
+
+    for t in times:
+
+        temp_discharge = cbobj.get_data(text="DRAINS", totim=t)[0]
+        drain_discharge.append(np.sum(temp_discharge['q']))
+
+        conc = ucnobject.get_data(totim=t)
+        conc_times_discharge = 0
+        for flow in temp_discharge:
+            shape = (pars.nlay, pars.nrow, pars.ncol)
+            cell = np.unravel_index(flow['node'], shape)
+            conc_times_discharge += flow['q']*conc[cell[0], cell[1], cell[2]]
+
+        drain_conc.append(conc_times_discharge/drain_discharge[-1])
+
+        np.savez(f".\\results\\{name}\\drain.npz", discharge=drain_discharge, conc=drain_conc, times=times)
