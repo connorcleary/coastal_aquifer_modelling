@@ -5,7 +5,6 @@ import pickle
 import flopy.utils.binaryfile as bf
 import pandas as pd
 import matplotlib.pyplot as plt
-import post_processing as proc
 
 class DrainedCoastalAquifer():
     def __init__(self, name, exe_path):
@@ -16,7 +15,7 @@ class DrainedCoastalAquifer():
         self._sea_level_rise_set = False
 
     def set_geometries(self, Lx=200, Ly=1, Lz=6.5, offshore_boundary_type='vertical', offshore_proportion=0.025,
-                sea_level=5, ncol=400, nrow=1, nlay=110):
+                sea_level=5, ncol=400, nrow=1, nlay=130):
         """
 
         :param Lx: length of the aquifer [m]
@@ -97,7 +96,7 @@ class DrainedCoastalAquifer():
         :param x_w: distance from the offshore boundary to wetland [m]
         :param Lx_w: length of wetland [m]
         :param Ly_w: width of wetland [m]
-        :param z_w: depth of wetland below land surface [m]
+        :param z_w: base of wetland above
         :param wetland_as_drain: bool
         :param drain_conductance:
         """
@@ -217,14 +216,19 @@ class DrainedCoastalAquifer():
     
         # add wetland cells
         if self.x_w != 0:
-            for j in range(self.nrow):
-                for i in range(int((self.x_w) / self.delr),
-                               int((self.x_w + self.Lx_w) / self.delr)):
-                    for k in range(int((self.Lz - self.sea_level - self.h_w) / self.delv) + 1,
-                                   int((self.Lz - self.sea_level - self.z_w) / self.delv)):
-                        wetland_cells.append([k, j, i])
-                    for k in range(0, int((self.Lz - self.sea_level - self.h_w) / self.delv) + 1):
-                        inactive_cells.append([k, j, i])
+                for j in range(self.nrow):
+                    for i in range(int((self.x_w) / self.delr),
+                                   int((self.x_w + self.Lx_w) / self.delr)):
+
+                        for k in range(0, int((self.z_w) / self.delv)):
+                            if self.wetland_as_drain:
+                                wetland_cells.append([k, j, i])
+                            else:
+                                if k*self.delv < (self.Lz-self.sea_level-self.h_w):
+                                    inactive_cells.append([k, j, i])
+                                else:
+                                    wetland_cells.append([k, j, i])
+
     
         # create ibound array
         ibound = np.ones((self.nlay, self.nrow, self.ncol), dtype=np.int32)
@@ -302,7 +306,7 @@ class DrainedCoastalAquifer():
         if not self._sea_level_rise_set:
             self.set_sea_level_rise(sea_level_rise=0)
 
-        model_ws = f".\\model_files\\{self.name}"
+        model_ws = f"..\\model_files\\{self.name}"
         if not os.path.exists(model_ws):
             os.makedirs(model_ws)
     
@@ -468,7 +472,7 @@ class DrainedCoastalAquifer():
                                 self.nrow*self.ncol+self.Lx_w*self.nrow*(self.x_w!=0)))
         else:
             mxss = int(np.ceil(2 * self.nlay * self.nrow +
-                               self.nrow * self.ncol + self.Lx_w * self.nrow * (self.x_w != 0)))
+                               self.nrow * self.ncol + self.Lx_w * self.nrow * self.ncol * (self.x_w != 0)))
 
     
         # define source sink mixing package
@@ -522,7 +526,7 @@ class DrainedCoastalAquifer():
                 concentration: concentration matrix [nstp, nlay, nrow, ncol]
         """
         name = self.name
-        model_ws = f".\\model_files\\{name}"
+        model_ws = f"..\\model_files\\{name}"
         nstp = self.perlen/self.dt
     
         # open binary files
@@ -563,7 +567,7 @@ class DrainedCoastalAquifer():
                 None
         """
         name = self.name
-        ws = os.path.join(f'.\\results\\{name}')
+        ws = os.path.join(f'..\\results\\{name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
     
@@ -584,7 +588,7 @@ class DrainedCoastalAquifer():
                 concentration, head... : numpy matrices of results
         """
         name = self.name
-        ws = os.path.join(f'.\\results\\{name}')
+        ws = os.path.join(f'..\\results\\{name}')
         if not os.path.exists(os.path.join(ws, f"qx.npy")):
             self.extract_results()
     
@@ -597,7 +601,7 @@ class DrainedCoastalAquifer():
         return concentration, head, qx, qy, qz,
     
     def get_drain_results(self):
-        ws = os.path.join(f'.\\results\\{self.name}')
+        ws = os.path.join(f'..\\results\\{self.name}')
         if not os.path.exists(os.path.join(ws, f"drain.npz")):
             self._extract_drain_results()
     
@@ -608,7 +612,7 @@ class DrainedCoastalAquifer():
     def _extract_drain_results(self):
     
         name = self.name
-        model_ws = f".\\model_files\\{name}"
+        model_ws = f"..\\model_files\\{name}"
     
         # open binary files
         cbobj = bf.CellBudgetFile(os.path.join(model_ws, f'{name}.cbc'))
@@ -633,7 +637,7 @@ class DrainedCoastalAquifer():
     
             drain_conc.append(conc_times_discharge/drain_discharge[-1])
     
-            np.savez(f".\\results\\{name}\\drain.npz", discharge=drain_discharge, conc=drain_conc, times=times)
+            np.savez(f"..\\results\\{name}\\drain.npz", discharge=drain_discharge, conc=drain_conc, times=times)
 
     def _find_mixing_volume(self, conc, fraction=0.05):
         """
@@ -798,17 +802,17 @@ class DrainedCoastalAquifer():
 
         delv = self.Lz / self.nlay
         delr = self.Lx / self.ncol
-        wetland_base = [[int((self.Lz - self.sea_level - self.z_w) / delv), col] for col in
+        wetland_base = [[int((self.z_w) / delv), col] for col in
                         range(int((self.offshore_proportion * self.Lx + self.x_w) / delr),
                               int((self.offshore_proportion * self.Lx + self.x_w + self.Lx_w) / delr))]
 
         wetland_left = [[int(lay), int((self.offshore_proportion * self.Lx + self.x_w) / delr) - 1] for lay in
                         range(int((self.Lz - self.sea_level - self.h_w) / delv),
-                              int((self.Lz - self.sea_level - self.z_w) / delv))]
+                              int((self.z_w) / delv))]
 
         wetland_right = [[int(lay), int((self.offshore_proportion * self.Lx + self.x_w + self.Lx_w) / delr)] for lay in
                          range(int((self.Lz - self.sea_level - self.h_w) / delv),
-                               int((self.Lz - self.sea_level - self.z_w) / delv))]
+                               int((self.z_w) / delv))]
 
         for cell in wetland_base:
             conc_flux += np.max([0, -1 * qz[cell[0], cell[1]] * conc[cell[0], cell[1]]])
@@ -952,7 +956,7 @@ class DrainedCoastalAquifer():
         if return_axs:
             return axs
         else:
-            ws = os.path.join(f'.\\figures\\{self.name}')
+            ws = os.path.join(f'..\\figures\\{self.name}')
             if not os.path.exists(ws):
                 os.makedirs(ws)
             plt.savefig(f"{ws}\\head_and_concentration", dpi=300)
@@ -1007,7 +1011,7 @@ class DrainedCoastalAquifer():
 
         f.suptitle(f"Evolution of metrics for {self.name}")
 
-        ws = os.path.join(f'.\\figures\\{self.name}')
+        ws = os.path.join(f'..\\figures\\{self.name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
 
@@ -1066,7 +1070,7 @@ class DrainedCoastalAquifer():
         ax.set_ylim([-self.sea_level - 0.5, self.Lz - self.sea_level + 0.5])
         ax.legend()
 
-        ws = os.path.join(f'.\\figures\\{self.name}')
+        ws = os.path.join(f'..\\figures\\{self.name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
 
@@ -1098,7 +1102,7 @@ class DrainedCoastalAquifer():
         axs[-1].set_axis_off()
 
         plt.tight_layout()
-        ws = os.path.join(f'.\\figures\\{self.name}')
+        ws = os.path.join(f'..\\figures\\{self.name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
 
@@ -1126,7 +1130,7 @@ class DrainedCoastalAquifer():
         axs[1].set_ylabel("Concentration [PSU]")
         axs[1].set_xlabel("Time [years]")
 
-        ws = os.path.join(f'.\\figures\\{self.name}')
+        ws = os.path.join(f'..\\figures\\{self.name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
 
@@ -1177,7 +1181,7 @@ class DrainedCoastalAquifer():
         units = ["m", "m", "m^3", "m", "m^3/s", "m^3/s", "m^3/s",
                  "m^3/s", "m^3/s", "m^3/s", "m^3/s", "m^3/s"]
 
-        ws = os.path.join(f'.\\results\\{self.name}')
+        ws = os.path.join(f'..\\results\\{self.name}')
         if not os.path.exists(ws):
             os.makedirs(ws)
 
