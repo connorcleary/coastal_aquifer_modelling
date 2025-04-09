@@ -54,7 +54,7 @@ def flux_controlled_example():
     head_controlled_model = DrainedCoastalAquifer("steady")
     inland_influx = head_controlled_model.get_final_inland_influx()
 
-    steady_model = DrainedCoastalAquifer("steady_fixed_flux2", exe_path=r"C:\Users\conno\Desktop\swt_v4_00_05\swt_v4_00_05\exe\swt_v4.exe")
+    steady_model = DrainedCoastalAquifer("steady_fixed_flux", exe_path=r"C:\Users\conno\Desktop\swt_v4_00_05\swt_v4_00_05\exe\swt_v4.exe")
     # set up steady_model structure
     steady_model.set_geometries(nlay=30, ncol=100)
     # set up temporal parameters
