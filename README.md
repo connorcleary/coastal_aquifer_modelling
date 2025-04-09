@@ -3,7 +3,8 @@
 
 To use:
  1. Clone repository
- 2. In anaconda prompt, navigate to repositiory
- 3. Install requirements: `conda env create -f environment.yml`
+ 2. In anaconda prompt/terminal, navigate to repositiory
+ 3. Install requirements: `conda create --name swi_env -c conda-forge flopy matplotlib numpy`
  4. Activate environment: `conda activate swi_env`
- 5. Create text file named `exe_path.txt` in repository with one line: the path to the SEAWAT executable
+
+Check out the examples script to see how to use :D

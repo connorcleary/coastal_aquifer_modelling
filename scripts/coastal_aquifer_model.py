@@ -1,9 +1,7 @@
 import numpy as np
 import flopy
 import os
-import pickle
 import flopy.utils.binaryfile as bf
-import pandas as pd
 import matplotlib.pyplot as plt
 
 class DrainedCoastalAquifer():

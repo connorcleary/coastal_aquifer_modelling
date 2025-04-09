@@ -98,8 +98,8 @@ def flux_controlled_example():
 
 
 def main():
-    steady_example()
-    sea_level_rise_example()
+    # steady_example()
+    # sea_level_rise_example()
     flux_controlled_example()
 
 
