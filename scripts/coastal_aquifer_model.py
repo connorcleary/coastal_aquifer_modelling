@@ -7,12 +7,13 @@ import pandas as pd
 import matplotlib.pyplot as plt
 
 class DrainedCoastalAquifer():
-    def __init__(self, name, exe_path):
+    def __init__(self, name, exe_path=None):
         self.name = name
         self.drain = False
         self.exe_path=exe_path
         self._hydraulic_properties_set = False
         self._sea_level_rise_set = False
+
 
     def set_geometries(self, Lx=200, Ly=1, Lz=6.5, offshore_boundary_type='vertical', offshore_proportion=0.025,
                 sea_level=5, ncol=400, nrow=1, nlay=130):
@@ -96,7 +97,7 @@ class DrainedCoastalAquifer():
         :param x_w: distance from the offshore boundary to wetland [m]
         :param Lx_w: length of wetland [m]
         :param Ly_w: width of wetland [m]
-        :param z_w: base of wetland above
+        :param z_w: depth of the wetland/drain
         :param wetland_as_drain: bool
         :param drain_conductance:
         """
@@ -113,16 +114,19 @@ class DrainedCoastalAquifer():
                 self.drain_conductance = drain_conductance
         self.drain = True
         
-    def set_boundary_conditions(self, h_b=0, W_net=0.00285, h_w=0):
+    def set_boundary_conditions(self, h_b=None, W_net=0.00285, h_w=0, q_b=None):
         """
 
         :param h_b: inland boundary head (above steady state sea-level)
         :param W_net: distributed recharge
-        :param h_w: wetland head (above steady state sea-level
+        :param h_w: wetland head (above steady state sea-level)
+        :param q_b:  inland flux (total, will be divided by number of lays)
         """
+        assert (h_b is not None) + (q_b is not None) == 1, "please set one of h_b and q_b"
         self.h_b = h_b
         self.W_net = W_net
         self.h_w = h_w
+        self.q_b = q_b
         
     def set_sea_level_rise(self, sea_level_rise=1, rise_type='linear', rise_length=100*365, rise_time_series=None, initial_conditions=None):
         """
@@ -140,7 +144,10 @@ class DrainedCoastalAquifer():
         self.rise_time_series = rise_time_series
         self.initial_conditions = initial_conditions
         self._sea_level_rise_set = True
-        
+
+    def set_exe_path(self, exe_path):
+        assert exe_path is not None
+        self.exe_path = exe_path
     def _create_temporal_discretization(self):
         """
         Funciton to make the tdis period data
@@ -204,9 +211,13 @@ class DrainedCoastalAquifer():
             for j in range(self.nrow):
                 if k >= np.floor((self.Lz - self.sea_level) / self.delv):  # if the cell is below sea level
                     offshore_boundary_cells.append([k, j, 0])
-    
-                if k >= np.floor((self.Lz - self.sea_level - self.h_b) / self.delv):
+                if self.h_b is not None:
+                    if k >= np.floor((self.Lz - self.sea_level - self.h_b) / self.delv):
+                        onshore_boundary_cells.append([k, j, self.ncol - 1])
+                elif self.q_b is not None:
                     onshore_boundary_cells.append([k, j, self.ncol - 1])
+                else:
+                    raise ValueError("Please set one of h_b and q_b")
     
         # add the seafloor
         if self.offshore_boundary_type == "werner":
@@ -254,6 +265,7 @@ class DrainedCoastalAquifer():
         drn_spd = {per: [] for per in range(self.nper)}
         chd_spd = {per: [] for per in range(self.nper)}
         ssm_spd = {per: [] for per in range(self.nper)}
+        wel_spd = {per: [] for per in range(self.nper)}
         oc_spd = {}
         oc_spd = {}
         itype = flopy.mt3d.Mt3dSsm.itype_dict()
@@ -267,8 +279,12 @@ class DrainedCoastalAquifer():
     
         for cell in onshore_boundary_cells:
             for per in range(self.nper):
-                ssm_spd[per].append([cell[0], cell[1], cell[2], 0, itype["BAS6"]])
-                chd_spd[per].append([cell[0], cell[1], cell[2], self.sea_level+self.h_b, self.sea_level+self.h_b])
+                if self.h_b is not None:
+                    ssm_spd[per].append([cell[0], cell[1], cell[2], 0, itype["BAS6"]])
+                    chd_spd[per].append([cell[0], cell[1], cell[2], self.sea_level+self.h_b, self.sea_level+self.h_b])
+                elif self.q_b is not None:
+                    ssm_spd[per].append([cell[0], cell[1], cell[2], 0, itype["WEL"]])
+                    wel_spd[per].append([cell[0], cell[1], cell[2], self.q_b/len(onshore_boundary_cells)])
     
         if self.initial_conditions is None:
             for cell in offshore_boundary_cells:
@@ -294,7 +310,7 @@ class DrainedCoastalAquifer():
                 if per%self.frequency == 0 or per == self.nper-1:
                     oc_spd[(per, 0)] = ["save head", "save budget"]
     
-        return drn_spd, chd_spd, oc_spd, ssm_spd
+        return drn_spd, chd_spd, oc_spd, ssm_spd, wel_spd
     
     def build_model(self):
         '''
@@ -371,8 +387,8 @@ class DrainedCoastalAquifer():
         # create layer property flow package
         lpf = flopy.modflow.ModflowLpf(
                 swt, 
-                hk=self.K, 
-                vka=self.anis, 
+                hk=self.K,
+                vka=self.anis,
                 ipakcb=ipakcb, 
                 laytyp=laytyp, 
                 laywet=laywet,
@@ -389,12 +405,19 @@ class DrainedCoastalAquifer():
                 mxiter=500
             )
     
-        drn_spd, chd_spd, oc_spd, ssm_spd = self._create_stress_period_data(wetland_cells, onshore_boundary_cells, offshore_boundary_cells)
+        drn_spd, chd_spd, oc_spd, ssm_spd, wel_spd = self._create_stress_period_data(wetland_cells, onshore_boundary_cells, offshore_boundary_cells)
     
         if len(wetland_cells) > 0:
             drn = flopy.modflow.ModflowDrn(
                 model=swt,
                 stress_period_data=drn_spd,
+                ipakcb=ipakcb
+            )
+
+        if self.q_b is not None:
+            wel = flopy.modflow.ModflowWel(
+                model=swt,
+                stress_period_data=wel_spd,
                 ipakcb=ipakcb
             )
     
@@ -506,6 +529,7 @@ class DrainedCoastalAquifer():
             Outputs:
                 None
         """
+        assert self.exe_path is not None, "please set executable path using self.set_exe_path()"
         self.swt.write_input()
         success, buff = self.swt.run_model(silent=False, report=True)
         if not success:
@@ -855,6 +879,14 @@ class DrainedCoastalAquifer():
 
         return mound
 
+    def get_final_inland_influx(self):
+        _, _, qx, _, _ = self.load_results()
+        assert np.ndim(qx) == 4
+        inland_influx = -np.sum(qx[-1, :, :, -2])
+        assert inland_influx > 0, "No influx"
+        return inland_influx
+
+
     def plot_salinity(self, ax, conc, qx, qz, cmap="viridis", row=0, x_step=10, z_step=5, width=0.002, arrow_c="white"):
 
         x = np.linspace(-self.Lx * self.offshore_proportion, self.Lx - self.Lx * self.offshore_proportion, self.ncol)
@@ -916,12 +948,14 @@ class DrainedCoastalAquifer():
                     concentration_array[i, j] = np.nan
 
         # plot head colormesh
+        head_array[head_array<-700] = np.nan
+        head_array[head_array>700] = np.nan
         headcm = axs[0].pcolormesh(x, y, np.flipud(head_array),
-                                   cmap=cmap, vmax=np.nanmax(head_array[:, 1:]), vmin=np.min([0, self.h_b]))
+                                   cmap=cmap)
 
         # plot head contours
         hc = axs[0].contour(x, y, np.flipud(head_array), colors=arrow_c,
-                            levels=np.linspace(np.min([0, self.h_b]), np.nanmax(head_array[:, 1:]), 15))
+                            levels=np.linspace(np.nanmin(head_array), np.nanmax(head_array), 15))
 
         # label contours
         axs[0].clabel(hc, hc.levels, inline=True, fontsize=10, fmt=fmt)
@@ -1029,6 +1063,7 @@ class DrainedCoastalAquifer():
                 figsize: figure size in inches
                 row: model row
         """
+        assert self.q_b is None, "not implemented for flux controlled boundary"
 
         concentration, head, qx, qy, qz = self.load_results()
 
